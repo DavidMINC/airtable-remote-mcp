@@ -1,3 +1,158 @@
+from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from pydantic import BaseModel, Field, validator
+
+# OAuth Models
+class ClientRegistrationRequest(BaseModel):
+    """OAuth 2.1 Dynamic Client Registration Request"""
+    client_name: str = Field(..., description="Human-readable client name")
+    redirect_uris: List[str] = Field(..., description="Array of redirection URI strings")
+    application_type: Optional[str] = Field("web", description="Native or web application")
+    token_endpoint_auth_method: Optional[str] = Field("none", description="Authentication method")
+    grant_types: Optional[List[str]] = Field(["authorization_code"], description="Grant types")
+    response_types: Optional[List[str]] = Field(["code"], description="Response types")
+    scope: Optional[str] = Field("mcp:read mcp:write", description="Requested scope")
+    contacts: Optional[List[str]] = Field(None, description="Contact email addresses")
+    logo_uri: Optional[str] = Field(None, description="Logo URI")
+    client_uri: Optional[str] = Field(None, description="Client homepage URI")
+    policy_uri: Optional[str] = Field(None, description="Privacy policy URI")
+    tos_uri: Optional[str] = Field(None, description="Terms of service URI")
+
+    @validator('redirect_uris')
+    def validate_redirect_uris(cls, v):
+        if not v:
+            raise ValueError('At least one redirect URI is required')
+        for uri in v:
+            if not (uri.startswith('https://') or 
+                   uri.startswith('http://localhost') or 
+                   uri.startswith('http://127.0.0.1') or
+                   '://' in uri):  # Allow custom schemes for native apps
+                raise ValueError(f'Invalid redirect URI: {uri}')
+        return v
+
+class ClientRegistrationResponse(BaseModel):
+    """OAuth 2.1 Dynamic Client Registration Response"""
+    client_id: str
+    client_name: str
+    redirect_uris: List[str]
+    grant_types: List[str]
+    response_types: List[str]
+    scope: str
+    token_endpoint_auth_method: str
+    client_id_issued_at: int
+
+class TokenRequest(BaseModel):
+    """OAuth 2.1 Token Request"""
+    grant_type: str = Field(..., description="Authorization grant type")
+    code: Optional[str] = Field(None, description="Authorization code")
+    redirect_uri: Optional[str] = Field(None, description="Redirect URI")
+    client_id: Optional[str] = Field(None, description="Client identifier")
+    code_verifier: Optional[str] = Field(None, description="PKCE code verifier")
+    refresh_token: Optional[str] = Field(None, description="Refresh token for refresh grant")
+
+class TokenResponse(BaseModel):
+    """OAuth 2.1 Token Response"""
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int
+    refresh_token: Optional[str] = None
+    scope: Optional[str] = None
+
+class TokenIntrospectionResponse(BaseModel):
+    """OAuth 2.1 Token Introspection Response"""
+    active: bool
+    client_id: Optional[str] = None
+    scope: Optional[str] = None
+    token_type: Optional[str] = None
+    exp: Optional[int] = None
+    iat: Optional[int] = None
+    sub: Optional[str] = None
+
+# MCP Models
+class MCPError(BaseModel):
+    """MCP JSON-RPC Error"""
+    code: int
+    message: str
+    data: Optional[Any] = None
+
+class MCPRequest(BaseModel):
+    """MCP JSON-RPC Request"""
+    jsonrpc: str = Field("2.0", description="JSON-RPC version")
+    method: str = Field(..., description="Method name")
+    params: Optional[Dict[str, Any]] = Field(None, description="Method parameters")
+    id: Optional[Union[str, int]] = Field(None, description="Request identifier")
+
+class MCPResponse(BaseModel):
+    """MCP JSON-RPC Response"""
+    jsonrpc: str = Field("2.0", description="JSON-RPC version")
+    id: Optional[Union[str, int]] = Field(None, description="Request identifier")
+    result: Optional[Any] = Field(None, description="Method result")
+    error: Optional[MCPError] = Field(None, description="Error information")
+
+class MCPServerInfo(BaseModel):
+    """MCP Server Information"""
+    name: str
+    version: str
+    protocolVersion: str = "2025-03-26"
+
+class MCPClientInfo(BaseModel):
+    """MCP Client Information"""
+    name: str
+    version: str
+
+class MCPCapabilities(BaseModel):
+    """MCP Capabilities"""
+    tools: Optional[Dict[str, Any]] = None
+    resources: Optional[Dict[str, Any]] = None
+    prompts: Optional[Dict[str, Any]] = None
+    logging: Optional[Dict[str, Any]] = None
+
+class MCPInitializeParams(BaseModel):
+    """MCP Initialize Parameters"""
+    protocolVersion: str
+    clientInfo: MCPClientInfo
+    capabilities: MCPCapabilities
+
+class MCPInitializeResult(BaseModel):
+    """MCP Initialize Result"""
+    protocolVersion: str
+    serverInfo: MCPServerInfo
+    capabilities: MCPCapabilities
+
+class MCPTool(BaseModel):
+    """MCP Tool Definition"""
+    name: str
+    description: str
+    inputSchema: Dict[str, Any]
+
+class MCPToolsListResult(BaseModel):
+    """MCP Tools List Result"""
+    tools: List[MCPTool]
+
+class MCPToolCallParams(BaseModel):
+    """MCP Tool Call Parameters"""
+    name: str
+    arguments: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class MCPContentItem(BaseModel):
+    """MCP Content Item"""
+    type: str
+    text: Optional[str] = None
+    data: Optional[str] = None
+    mimeType: Optional[str] = None
+
+class MCPToolCallResult(BaseModel):
+    """MCP Tool Call Result"""
+    content: List[MCPContentItem]
+    isError: Optional[bool] = False
+
+class MCPResource(BaseModel):
+    """MCP Resource Definition"""
+    uri: str
+    name: str
+    description: Optional[str] = None
+    mimeType: Optional[str] = None
+
 class MCPResourcesListResult(BaseModel):
     """MCP Resources List Result"""
     resources: List[MCPResource]
@@ -149,135 +304,3 @@ class RateLimitError(BaseModel):
     error: str = "rate_limit_exceeded"
     message: str
     retry_after: Optional[int] = None
-
-# Session Models
-class MCPSession(BaseModel):
-    """MCP Session Information"""
-    session_id: str
-    client_info: MCPClientInfo
-    protocol_version: str
-    client_capabilities: MCPCapabilities
-    token_data: Dict[str, Any]
-    created_at: str
-    last_activity: str
-
-class OAuthClient(BaseModel):
-    """OAuth Client Information"""
-    client_id: str
-    client_name: str
-    redirect_uris: List[str]
-    grant_types: List[str]
-    response_types: List[str]
-    scope: str
-    token_endpoint_auth_method: str
-    created_at: float
-    application_type: Optional[str] = None
-    contacts: Optional[List[str]] = None
-    logo_uri: Optional[str] = None
-    client_uri: Optional[str] = None
-    policy_uri: Optional[str] = None
-    tos_uri: Optional[str] = None
-
-class AuthorizationCode(BaseModel):
-    """Authorization Code Information"""
-    client_id: str
-    redirect_uri: str
-    scope: str
-    code_challenge: str
-    code_challenge_method: str
-    created_at: float
-    expires_at: float
-    used: bool = False
-
-class AccessToken(BaseModel):
-    """Access Token Information"""
-    client_id: str
-    scope: str
-    created_at: float
-    expires_at: float
-    token_type: str = "Bearer"
-
-class RefreshToken(BaseModel):
-    """Refresh Token Information"""
-    client_id: str
-    scope: str
-    created_at: float
-    expires_at: float
-    access_token: str
-
-# Webhook Models (for future extension)
-class WebhookPayload(BaseModel):
-    """Webhook Payload"""
-    event: str
-    timestamp: str
-    data: Dict[str, Any]
-
-class WebhookSubscription(BaseModel):
-    """Webhook Subscription"""
-    id: str
-    url: str
-    events: List[str]
-    active: bool = True
-    created_at: str
-
-# Configuration Models
-class ServerConfiguration(BaseModel):
-    """Server Configuration"""
-    host: str = "0.0.0.0"
-    port: int = 8000
-    environment: str = "production"
-    base_url: str
-    secret_key: str
-    allowed_origins: List[str]
-    rate_limit_enabled: bool = True
-    rate_limit_requests: int = 100
-    rate_limit_window: int = 3600
-    oauth_code_expiry: int = 60
-    oauth_token_expiry: int = 3600
-    oauth_refresh_token_expiry: int = 86400
-    cleanup_interval: int = 300
-    log_level: str = "INFO"
-
-# Utility Models
-class PaginationInfo(BaseModel):
-    """Pagination Information"""
-    offset: Optional[str] = None
-    limit: Optional[int] = None
-    total: Optional[int] = None
-    has_more: Optional[bool] = None
-
-class AirtableListResponse(BaseModel):
-    """Generic Airtable List Response"""
-    records: Optional[List[AirtableRecord]] = None
-    tables: Optional[List[AirtableTable]] = None
-    bases: Optional[List[AirtableBase]] = None
-    offset: Optional[str] = None
-
-class BatchOperationResult(BaseModel):
-    """Batch Operation Result"""
-    successful: List[str]
-    failed: List[Dict[str, Any]]
-    total_processed: int
-    total_successful: int
-    total_failed: int
-
-# Metrics Models (for monitoring)
-class RequestMetrics(BaseModel):
-    """Request Metrics"""
-    method: str
-    endpoint: str
-    status_code: int
-    response_time_ms: float
-    timestamp: str
-    client_id: Optional[str] = None
-    error: Optional[str] = None
-
-class SystemMetrics(BaseModel):
-    """System Metrics"""
-    uptime_seconds: float
-    memory_usage_mb: float
-    cpu_usage_percent: float
-    active_sessions: int
-    total_requests: int
-    error_rate: float
-    timestamp: str
