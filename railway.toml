@@ -1,0 +1,48 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "python main.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[env]
+# Server Configuration
+PORT = { default = "8000" }
+HOST = { default = "0.0.0.0" }
+ENVIRONMENT = { default = "production" }
+
+# Security (These should be set in Railway dashboard)
+# BASE_URL = "https://your-railway-app.railway.app"
+# SECRET_KEY = "your-secret-key-here"
+# AIRTABLE_API_KEY = "your-airtable-api-key-here"
+
+# OAuth Configuration
+OAUTH_CODE_EXPIRY = { default = "60" }
+OAUTH_TOKEN_EXPIRY = { default = "3600" }
+OAUTH_REFRESH_TOKEN_EXPIRY = { default = "86400" }
+
+# Rate Limiting
+RATE_LIMIT_ENABLED = { default = "true" }
+RATE_LIMIT_REQUESTS = { default = "100" }
+RATE_LIMIT_WINDOW = { default = "3600" }
+
+# CORS
+ALLOWED_ORIGINS = { default = "https://claude.ai,https://api.anthropic.com" }
+
+# Airtable Configuration
+AIRTABLE_BASE_URL = { default = "https://api.airtable.com/v0" }
+AIRTABLE_TIMEOUT = { default = "30" }
+
+# MCP Configuration
+MCP_PROTOCOL_VERSION = { default = "2025-03-26" }
+MCP_SERVER_NAME = { default = "airtable-remote-mcp" }
+MCP_SERVER_VERSION = { default = "2.0.0" }
+
+# Logging
+LOG_LEVEL = { default = "INFO" }
+
+# Cleanup
+CLEANUP_INTERVAL = { default = "300" }
