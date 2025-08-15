@@ -1,3 +1,130 @@
+import asyncio
+import secrets
+import hashlib
+import base64
+import uuid
+import time
+import hmac
+from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+class AuthManager:
+    """Manages OAuth 2.1 authentication with Dynamic Client Registration and PKCE"""
+    
+    def __init__(self, config):
+        self.config = config
+        
+        # In-memory storage for development/small deployments
+        # For production, replace with Redis or database
+        self.clients: Dict[str, Dict[str, Any]] = {}
+        self.authorization_codes: Dict[str, Dict[str, Any]] = {}
+        self.access_tokens: Dict[str, Dict[str, Any]] = {}
+        self.refresh_tokens: Dict[str, Dict[str, Any]] = {}
+        self.rate_limits: Dict[str, Dict[str, Any]] = {}
+        
+        # Supported scopes
+        self.supported_scopes = {
+            "mcp:read": "Read access to MCP tools and resources",
+            "mcp:write": "Write access to MCP tools",
+            "mcp:admin": "Administrative access to MCP server"
+        }
+    
+    async def register_client(self, client_metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Register a new OAuth client using Dynamic Client Registration (RFC 7591)"""
+        
+        # Validate required fields
+        client_name = client_metadata.get("client_name")
+        if not client_name:
+            raise ValueError("client_name is required")
+        
+        redirect_uris = client_metadata.get("redirect_uris", [])
+        if not redirect_uris:
+            raise ValueError("redirect_uris is required")
+        
+        # Validate redirect URIs
+        for uri in redirect_uris:
+            if not self._is_valid_redirect_uri(uri):
+                raise ValueError(f"Invalid redirect_uri: {uri}")
+        
+        # Generate client credentials
+        client_id = f"airtable-mcp-{uuid.uuid4().hex[:16]}"
+        
+        # Store client registration
+        self.clients[client_id] = {
+            "client_id": client_id,
+            "client_name": client_name,
+            "redirect_uris": redirect_uris,
+            "grant_types": ["authorization_code"],
+            "response_types": ["code"],
+            "scope": "mcp:read mcp:write",
+            "token_endpoint_auth_method": "none",  # Public client
+            "created_at": time.time(),
+            "application_type": client_metadata.get("application_type", "web"),
+            "contacts": client_metadata.get("contacts", []),
+            "logo_uri": client_metadata.get("logo_uri"),
+            "client_uri": client_metadata.get("client_uri"),
+            "policy_uri": client_metadata.get("policy_uri"),
+            "tos_uri": client_metadata.get("tos_uri")
+        }
+        
+        logger.info(f"Registered new client: {client_id} ({client_name})")
+        
+        # Return client registration response
+        return {
+            "client_id": client_id,
+            "client_name": client_name,
+            "redirect_uris": redirect_uris,
+            "grant_types": ["authorization_code"],
+            "response_types": ["code"],
+            "scope": "mcp:read mcp:write",
+            "token_endpoint_auth_method": "none",
+            "client_id_issued_at": int(time.time())
+        }
+    
+    async def create_authorization(
+        self,
+        client_id: str,
+        redirect_uri: str,
+        response_type: str = "code",
+        scope: str = "mcp:read mcp:write",
+        state: Optional[str] = None,
+        code_challenge: Optional[str] = None,
+        code_challenge_method: str = "S256"
+    ) -> tuple[str, str]:
+        """Create an authorization code for the OAuth flow"""
+        
+        # Validate client
+        client = self.clients.get(client_id)
+        if not client:
+            raise ValueError("Invalid client_id")
+        
+        # Validate redirect URI
+        if redirect_uri not in client["redirect_uris"]:
+            raise ValueError("Invalid redirect_uri")
+        
+        # Validate response type
+        if response_type != "code":
+            raise ValueError("Unsupported response_type")
+        
+        # Validate PKCE (required for public clients)
+        if not code_challenge:
+            raise ValueError("code_challenge required for public clients")
+        
+        if code_challenge_method != "S256":
+            raise ValueError("Only S256 code_challenge_method supported")
+        
+        # Validate scopes
+        requested_scopes = scope.split() if scope else []
+        invalid_scopes = [s for s in requested_scopes if s not in self.supported_scopes]
+        if invalid_scopes:
+            raise ValueError(f"Invalid scopes: {invalid_scopes}")
+        
+        # Generate authorization code
+        auth_code = secrets.token_urlsafe(32)
+        
         # Store authorization code with PKCE challenge
         self.authorization_codes[auth_code] = {
             "client_id": client_id,
